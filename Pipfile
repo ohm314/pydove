@@ -10,6 +10,7 @@ markdown = "*"
 docopt = "*"
 jinja2 = "*"
 pyyaml = "*"
+validate-email = "*"
 
 [requires]
 python_version = "3.7"
