@@ -11,6 +11,7 @@ docopt = "*"
 jinja2 = "*"
 pyyaml = "*"
 validate-email = "*"
+jsonschema = "*"
 
 [requires]
 python_version = "3.7"

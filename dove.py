@@ -18,8 +18,10 @@ import csv
 import logging
 import os.path as osp
 from email import message
-from smtplib import SMTP
+from smtplib import SMTP, SMTPHeloError, SMTPNotSupportedError, SMTPException
+import time
 
+import jsonschema
 import markdown
 import yaml
 from docopt import docopt
@@ -27,6 +29,33 @@ from validate_email import validate_email
 
 logger = logging.getLogger(__name__)
 
+
+config_schema = """
+type: object
+properties:
+  smtp:
+    type: object
+    required: [host, port, username, password]
+    properties:
+      host:
+        type: string
+      port:
+        type: number
+      username:
+        type: string
+      password:
+        type: string
+      throttle:
+        type: number
+  mail:
+    type: object
+    required: [from, test_email]
+    properties:
+      from:
+        type: string
+      test_email:
+        type: string
+"""
 
 class Recipient:
     def __init__(self, name, email, salutation):
@@ -36,10 +65,15 @@ class Recipient:
 
 
 def get_configs(configfile):
-    with open(osp.abspath(osp.expanduser(configfile))) as cf:
-        configdict = yaml.load(cf)
-    return configdict
-
+    with open(configfile) as cf:
+        configdict = yaml.safe_load(cf)
+    schema = yaml.safe_load(config_schema)
+    try:
+        jsonschema.validate(instance=configdict, schema=schema)
+        return configdict
+    except jsonschema.ValidationError as ve:
+        logger.error('bad config file',ve)
+        return None
 
 def get_recipients(csvfile):
     recipients = []
@@ -70,20 +104,45 @@ def send_bulk(recipients, mdtext, configs, subject):
     port = configs['smtp']['port']
     username = configs['smtp']['username']
     password = configs['smtp']['password']
-    for r in recipients:
-        email = prepare_email(mdtext, subject, r, configs['mail']['from'])
-        server = SMTP(f'{host}:{port}')
-        server.ehlo()
+    if 'throttle' in configs['smtp']:
+        throttle = configs['smtp']['throttle']
+    else:
+        throttle = 1.0
+    server = SMTP(f'{host}:{port}')
+    try:
         server.starttls()
         server.login(username, password)
-        server.send_message(email, configs['mail']['from'], r.email)
+        for r in recipients:
+            email = prepare_email(mdtext, subject, r, configs['mail']['from'])
+            server.send_message(email, configs['mail']['from'], r.email)
+            logger.info(f'Sent email to {r.name} ({r.email})')
+            time.sleep(throttle)
+    except SMTPException as err:
+        logger.error('SMTP error: ', err)
+    except RuntimeError as err:
+        logger.error('SSL runtime error: ', err)
+    finally:
+        server.close()
 
 def main(args):
-    print(args)
-    configs = get_configs(args['--config'])
-    recipients = get_recipients(args['--recipients'])
+    cfg_path = osp.abspath(osp.expanduser(args['--config']))
+    if not osp.exists(cfg_path):
+        logger.error(f'path: {cfg_path} does not point to an existing file.')
+        return
+    configs = get_configs(cfg_path)
+    if not configs:
+        return
+    rcp_path = osp.abspath(osp.expanduser(args['--recipients']))
+    if not osp.exists(rcp_path):
+        logger.error(f'path: {rcp_path} does not point to an existing file.')
+        return
+    recipients = get_recipients(rcp_path)
+    msg_path = osp.abspath(osp.expanduser(args['--message']))
+    if not osp.exists(msg_path):
+        logger.error(f'path: {msg_path} does not point to an existing file.')
+        return
     mdtext = ''
-    with open(osp.abspath(osp.expanduser(args['--message']))) as mdf:
+    with open(msg_path) as mdf:
         mdtext = mdf.read()
     send_bulk(recipients, mdtext, configs, args['<subject>'])
 
