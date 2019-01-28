@@ -9,7 +9,7 @@ verify_ssl = true
 markdown = "*"
 docopt = "*"
 jinja2 = "*"
-pyyaml = "*"
+pyyaml = ">=4.2b1"
 validate-email = "*"
 jsonschema = "*"
 
