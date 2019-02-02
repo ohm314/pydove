@@ -25,6 +25,7 @@ import jsonschema
 import markdown
 import yaml
 from docopt import docopt
+from progress.bar import Bar
 from validate_email import validate_email
 
 logger = logging.getLogger(__name__)
@@ -88,7 +89,7 @@ def get_recipients(csvfile):
 
 
 def prepare_email(mdtext, subject, recipient, sender):
-    mdtext = recipient.salutation + '\n\n' + mdtext
+    mdtext = recipient.salutation + ' ' + recipient.name + '\n\n' + mdtext
     html_content = markdown.markdown(mdtext)
     email_message = message.Message()
     email_message.add_header('From', sender)
@@ -108,6 +109,7 @@ def send_bulk(recipients, mdtext, configs, subject):
         throttle = configs['smtp']['throttle']
     else:
         throttle = 1.0
+    bar = Bar('Processing', max=len(recipients))
     server = SMTP(f'{host}:{port}')
     try:
         server.starttls()
@@ -116,6 +118,7 @@ def send_bulk(recipients, mdtext, configs, subject):
             email = prepare_email(mdtext, subject, r, configs['mail']['from'])
             server.send_message(email, configs['mail']['from'], r.email)
             logger.info(f'Sent email to {r.name} ({r.email})')
+            bar.next()
             time.sleep(throttle)
     except SMTPException as err:
         logger.error('SMTP error: ', err)
@@ -123,6 +126,7 @@ def send_bulk(recipients, mdtext, configs, subject):
         logger.error('SSL runtime error: ', err)
     finally:
         server.close()
+        bar.finish()
 
 def main(args):
     cfg_path = osp.abspath(osp.expanduser(args['--config']))

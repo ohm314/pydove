@@ -12,6 +12,10 @@ jinja2 = "*"
 pyyaml = ">=4.2b1"
 validate-email = "*"
 jsonschema = "*"
+progress = "*"
 
 [requires]
 python_version = "3.7"
+
+[pipenv]
+allow_prereleases = true
